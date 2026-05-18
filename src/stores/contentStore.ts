@@ -1,139 +1,92 @@
-import { create } from 'zustand';
-import { streamZhipu, Message } from '../api/zhipu';
-import { templates } from '../prompts';
-import { 
-  getContentLibrary, 
-  saveToLibrary as saveToStorage, 
-  deleteFromLibrary as deleteFromStorage, 
-  toggleFavorite as toggleFavoriteInStorage,
-  SavedContent,
-  setItem,
-  getItem,
-  STORAGE_KEYS
-} from '../utils/storage';
-
-/**
- * 数据模型定义
- */
+import { create } from 'zustand'
+import { storage, STORAGE_KEYS } from '../utils/storage'
 
 export interface ToolConfig {
-  model: string;
-  temperature: number;
-  maxTokens: number;
+  platform?: string;
+  style?: string;
+  tone?: string;
+  [key: string]: any;
+}
+
+export interface GeneratedContent {
+  id: string;
+  toolId: string;
+  title: string;
+  content: string;
+  timestamp: number;
+  tags?: string[];
+  platform?: string;
 }
 
 export interface UsageStats {
-  totalGenerations: number;
-  toolUsage: Record<string, number>;
+  totalGenerated: number;
+  toolFrequency: Record<string, number>;
+  estimatedExposure: number;
 }
 
 interface ContentState {
-  // 状态数据
-  config: ToolConfig;
-  library: SavedContent[];
+  configs: Record<string, ToolConfig>;
+  library: GeneratedContent[];
+  favorites: string[];
   stats: UsageStats;
-  isGenerating: boolean;
-  currentOutput: string;
-
-  // 操作方法
-  setConfig: (config: Partial<ToolConfig>) => void;
-  generateContent: (toolType: string, inputs: Record<string, any>) => Promise<void>;
-  saveToLibrary: (toolType: string, title: string, content: string) => void;
+  
+  // Actions
+  setConfig: (toolId: string, config: ToolConfig) => void;
+  saveToLibrary: (content: GeneratedContent) => void;
   deleteFromLibrary: (id: string) => void;
   toggleFavorite: (id: string) => void;
-  updateStats: (toolType: string) => void;
-  resetOutput: () => void;
+  updateStats: (toolId: string) => void;
 }
 
-const DEFAULT_CONFIG: ToolConfig = {
-  model: 'GLM-4-Flash-250414',
-  temperature: 0.7,
-  maxTokens: 4096,
-};
+export const useContentStore = create<ContentState>((set) => ({
+  configs: storage.get(STORAGE_KEYS.CONFIG, {}),
+  library: storage.get(STORAGE_KEYS.CONTENT_LIBRARY, []),
+  favorites: storage.get(STORAGE_KEYS.FAVORITES, []),
+  stats: storage.get(STORAGE_KEYS.USAGE_STATS, {
+    totalGenerated: 0,
+    toolFrequency: {},
+    estimatedExposure: 0,
+  }),
 
-const DEFAULT_STATS: UsageStats = {
-  totalGenerations: 0,
-  toolUsage: {},
-};
+  setConfig: (toolId, config) => set((state) => {
+    const newConfigs = { ...state.configs, [toolId]: config };
+    storage.set(STORAGE_KEYS.CONFIG, newConfigs);
+    return { configs: newConfigs };
+  }),
 
-export const useContentStore = create<ContentState>((set, get) => ({
-  // 初始状态
-  config: getItem(STORAGE_KEYS.CONFIG, DEFAULT_CONFIG),
-  library: getContentLibrary(),
-  stats: getItem(STORAGE_KEYS.USAGE_STATS, DEFAULT_STATS),
-  isGenerating: false,
-  currentOutput: '',
+  saveToLibrary: (content) => set((state) => {
+    const newLibrary = [content, ...state.library];
+    storage.set(STORAGE_KEYS.CONTENT_LIBRARY, newLibrary);
+    return { library: newLibrary };
+  }),
 
-  // 更新配置
-  setConfig: (newConfig) => {
-    const updatedConfig = { ...get().config, ...newConfig };
-    set({ config: updatedConfig });
-    setItem(STORAGE_KEYS.CONFIG, updatedConfig);
-  },
+  deleteFromLibrary: (id) => set((state) => {
+    const newLibrary = state.library.filter((c) => c.id !== id);
+    const newFavorites = state.favorites.filter((f) => f !== id);
+    storage.set(STORAGE_KEYS.CONTENT_LIBRARY, newLibrary);
+    storage.set(STORAGE_KEYS.FAVORITES, newFavorites);
+    return { library: newLibrary, favorites: newFavorites };
+  }),
 
-  // 重置输出
-  resetOutput: () => set({ currentOutput: '' }),
+  toggleFavorite: (id) => set((state) => {
+    const newFavorites = state.favorites.includes(id)
+      ? state.favorites.filter((f) => f !== id)
+      : [...state.favorites, id];
+    storage.set(STORAGE_KEYS.FAVORITES, newFavorites);
+    return { favorites: newFavorites };
+  }),
 
-  // 生成内容（流式）
-  generateContent: async (toolType, inputs) => {
-    const template = templates[toolType];
-    if (!template) {
-      throw new Error(`未找到工具模板: ${toolType}`);
-    }
-
-    set({ isGenerating: true, currentOutput: '' });
-    get().updateStats(toolType);
-
-    try {
-      const messages = template.generateMessages(inputs);
-      const { model, temperature, maxTokens } = get().config;
-
-      const stream = streamZhipu(messages, {
-        model,
-        temperature,
-        max_tokens: maxTokens,
-      });
-
-      for await (const chunk of stream) {
-        set((state) => ({ currentOutput: state.currentOutput + chunk }));
-      }
-    } catch (error) {
-      console.error('内容生成失败:', error);
-      set({ currentOutput: `生成出错: ${error instanceof Error ? error.message : String(error)}` });
-    } finally {
-      set({ isGenerating: false });
-    }
-  },
-
-  // 保存到库
-  saveToLibrary: (toolType, title, content) => {
-    const newItem = saveToStorage({ toolType, title, content });
-    set({ library: getContentLibrary() });
-  },
-
-  // 从库删除
-  deleteFromLibrary: (id) => {
-    deleteFromStorage(id);
-    set({ library: getContentLibrary() });
-  },
-
-  // 切换收藏
-  toggleFavorite: (id) => {
-    toggleFavoriteInStorage(id);
-    set({ library: getContentLibrary() });
-  },
-
-  // 更新统计
-  updateStats: (toolType) => {
-    const currentStats = get().stats;
-    const updatedStats = {
-      totalGenerations: currentStats.totalGenerations + 1,
-      toolUsage: {
-        ...currentStats.toolUsage,
-        [toolType]: (currentStats.toolUsage[toolType] || 0) + 1,
+  updateStats: (toolId) => set((state) => {
+    const newStats = {
+      ...state.stats,
+      totalGenerated: state.stats.totalGenerated + 1,
+      toolFrequency: {
+        ...state.stats.toolFrequency,
+        [toolId]: (state.stats.toolFrequency[toolId] || 0) + 1,
       },
+      estimatedExposure: state.stats.estimatedExposure + Math.floor(Math.random() * 1000) + 500,
     };
-    set({ stats: updatedStats });
-    setItem(STORAGE_KEYS.USAGE_STATS, updatedStats);
-  },
+    storage.set(STORAGE_KEYS.USAGE_STATS, newStats);
+    return { stats: newStats };
+  }),
 }));

@@ -1,21 +1,9 @@
-@import "tailwindcss";
-@import "@heroui/react/styles";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 @layer base {
-  :root {
-    --bg-surface: 255 255 255;
+  body {
+    @apply bg-background text-foreground;
   }
-
-  .dark {
-    --bg-surface: 0 0 0;
-  }
-}
-
-/* Glassmorphism utility as requested in design constraints */
-@utility backdrop-blur-xl {
-  backdrop-filter: blur(24px);
-}
-
-@utility bg-surface\/60 {
-  background-color: rgb(var(--bg-surface) / 0.6);
 }

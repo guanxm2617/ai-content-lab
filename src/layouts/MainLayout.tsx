@@ -1,71 +1,53 @@
-import type { ReactNode } from "react";
-import { ListBox } from "@heroui/react";
-import { useNavigate, useLocation } from "react-router-dom";
-import type { Key } from "react-aria-components";
+import { Outlet, Link, useLocation } from 'react-router-dom'
+import { LayoutDashboard, Rocket, Hash, FileText, Share2, ShieldCheck, MessageCircle, Library } from 'lucide-react'
 
-interface MainLayoutProps {
-  children: ReactNode;
-}
+const navItems = [
+  { name: '工作台', icon: LayoutDashboard, path: '/' },
+  { name: '活动策划', icon: Rocket, path: '/tools/activity' },
+  { name: '选题助手', icon: Hash, path: '/tools/topic' },
+  { name: '文章写作', icon: FileText, path: '/tools/article' },
+  { name: '小红书生成', icon: Share2, path: '/tools/xiaohongshu' },
+  { name: '文章审核', icon: ShieldCheck, path: '/tools/review' },
+  { name: '朋友圈优化', icon: MessageCircle, path: '/tools/moments' },
+  { name: '内容库', icon: Library, path: '/library' },
+]
 
-export default function MainLayout({ children }: MainLayoutProps) {
-  const navigate = useNavigate();
-  const location = useLocation();
-
-  const menuItems = [
-    { id: "/", label: "首页/工作台" },
-    { id: "/tools/activity", label: "活动策划助手" },
-    { id: "/tools/topic", label: "公众号选题助手" },
-    { id: "/tools/article", label: "文章写作智能体" },
-    { id: "/tools/xiaohongshu", label: "小红书图文生成器" },
-    { id: "/tools/review", label: "文章审核助手" },
-    { id: "/tools/moments", label: "朋友圈文案优化" },
-    { id: "/library", label: "内容库" },
-  ];
-
-  const onSelectionChange = (keys: "all" | Set<Key>) => {
-    if (keys !== "all" && keys.size > 0) {
-      const selectedKey = Array.from(keys)[0];
-      navigate(selectedKey as string);
-    }
-  };
+const MainLayout = () => {
+  const location = useLocation()
 
   return (
-    <div className="flex min-h-screen bg-background text-foreground">
+    <div className="flex h-screen bg-background">
       {/* Sidebar */}
-      <aside className="w-64 border-r border-divider bg-surface/60 backdrop-blur-xl sticky top-0 h-screen overflow-y-auto">
+      <aside className="w-64 border-r bg-surface/60 backdrop-blur-xl">
         <div className="p-6">
-          <h2 className="text-xl font-bold text-primary">内容生产助手</h2>
+          <h1 className="text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+            Media Assistant
+          </h1>
         </div>
-        <div className="px-2">
-          <ListBox
-            aria-label="Navigation"
-            selectionMode="single"
-            selectedKeys={new Set([location.pathname])}
-            onSelectionChange={onSelectionChange}
-            className="w-full"
-          >
-            {menuItems.map((item) => (
-              <ListBox.Item
-                id={item.id}
-                key={item.id}
-                textValue={item.label}
-                className={`flex items-center px-3 py-2 rounded-lg cursor-pointer transition-colors ${
-                  location.pathname === item.id 
-                    ? "bg-primary/10 text-primary font-medium" 
-                    : "hover:bg-default-100"
-                }`}
-              >
-                {item.label}
-              </ListBox.Item>
-            ))}
-          </ListBox>
-        </div>
+        <nav className="mt-4 px-4 space-y-1">
+          {navItems.map((item) => (
+            <Link
+              key={item.path}
+              to={item.path}
+              className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${
+                location.pathname === item.path
+                  ? 'bg-primary text-primary-foreground shadow-lg'
+                  : 'text-foreground hover:bg-default-100'
+              }`}
+            >
+              <item.icon size={20} />
+              <span className="font-medium">{item.name}</span>
+            </Link>
+          ))}
+        </nav>
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col h-screen overflow-y-auto">
-        {children}
+      <main className="flex-1 overflow-auto p-8">
+        <Outlet />
       </main>
     </div>
-  );
+  )
 }
+
+export default MainLayout
